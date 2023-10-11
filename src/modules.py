@@ -70,7 +70,7 @@ class LSTMLayer(nn.Module):
         # self.fc = nn.Linear(h_sizes[-1], d_model)
 
     def forward(self, x):
-        print(x.shape)
+    
         for net in self.net:
             x = net(x)
         # x = self.fc(x[:, -1, : ])
@@ -105,13 +105,13 @@ class CNNLayer(nn.Module):
         features = config.features
         kernel_size = config.kernel_size 
         dilation = config.dilation 
-        act_func = config.act_func 
+        # act_func = config.act_func 
         
         self.convs = nn.ModuleList()
 
         for i in range(len(features)):
             self.convs.append(
-                ConvBlock(in_ch, features[i], kernel_size=kernel_size, dilation=dilation, act_func=act_func)
+                ConvBlock(in_ch, features[i], kernel_size=kernel_size, dilation=dilation, act_func=nn.ReLU)
             )
 
             in_ch = features[i]

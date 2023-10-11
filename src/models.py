@@ -55,7 +55,7 @@ class TranClass(nn.Module):
 class LSTM_FCN(nn.Module):
 
     def __init__(self, config):
-
+        super().__init__()
         self.cnn = CNNLayer(config)
         self.lstm = LSTMLayer(config)
 

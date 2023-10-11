@@ -4,13 +4,17 @@ import numpy as np
 import math
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
+
 def print_dict(**kwargs):
     result = ""
     for key, value in kwargs.items():
         result += f"{key}={value} "
     return result.strip()
 
+def print_log(path, data):
+    print(data)
+    log_data(path, data)
+    
 def metrics(true, pred):
     true = np.array(true)
     pred = np.array(pred)
@@ -23,6 +27,11 @@ def metrics(true, pred):
         'f1_score': f1,
         'roc_auc_score': ras
     }
+
+def calc_accuracy(true, pred):
+
+    return accuracy_score(true, pred)
+
 
 def set_lr(optim, lr):
     for p in optim.param_groups:
@@ -47,11 +56,23 @@ def visual_data(true, advers = None, figsize = (12, 7), path='./pic', name = 'te
         os.mkdir(path)
     plt.savefig(os.path.join(path, name), bbox_inches='tight')
 
-@dataclass
+def log_data(path, data):
+    with open(path, 'a+') as f:
+        f.write(data)
+
 class Config:
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
-            setattr(self, k, v)
+            if isinstance(v, dict):
+                setattr(self, k, Config(**v))
+            else:
+                setattr(self, k, v)
+    
+    def __str__(self):
+        return '\n'.join(f'{key}: {value}' for key, value in self.__dict__.items())
+
+    def __repr__(self):
+        return self.__str__()
 
 class EarlyStopping:
     def __init__(self, patience=7, verbose=False, delta=0):
@@ -80,7 +101,7 @@ class EarlyStopping:
 
     def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...\n')
         torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
         self.val_loss_min = val_loss
 

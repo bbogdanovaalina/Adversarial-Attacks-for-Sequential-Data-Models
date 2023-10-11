@@ -1,9 +1,17 @@
 import torch
-from .tools import EarlyStopping, visual_data,  set_lr, cosine_annealing_lr, metrics
+from .tools import EarlyStopping, visual_data,  set_lr, cosine_annealing_lr, metrics, print_dict, calc_accuracy, print_log
 from .attacks import get_attack
 from .datasets import get_dataset_loader
 from .models import get_model
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
+import os
+import numpy as np
+import warnings
+
+warnings.filterwarnings('ignore')
+
+
 
 
 class Trainer:
@@ -11,13 +19,13 @@ class Trainer:
     def __init__(self, config):
         self.config = config
         self.device = config.device
-        self.model = self._build_model(config).to(self.device)
+        self.model = self._build_model(config.model).to(self.device)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.optim = torch.optim.Adamax(self.model.parameters(), lr=config.lr)
         
     
     def _build_model(self, config):
-        return get_model(config.model)(config)
+        return get_model(config.model_name)(config)
     
 
     def _process_one_batch(self, batch_x, batch_y):
@@ -26,57 +34,148 @@ class Trainer:
 
         preds = self.model(batch_x)
 
-        loss = self.criterion(preds, batch_x)
+        loss = self.criterion(preds, batch_y)
 
         preds_class = preds.argmax(1)
+        
+        acc = calc_accuracy(batch_y.cpu().detach(), preds_class.cpu().detach())
 
-        m = metrics(batch_y.cpu().detach(), preds_class.cpu().detach())
-
-        return loss, m
+        return loss, acc, preds
 
 
 
-    def train(self):
+    def train(self, path):
         self.model.train()
         train_set, train_loader = get_dataset_loader(self.config, 'TRAIN')
         val_set, val_loader = get_dataset_loader(self.config, 'TEST')
         early_stopping = EarlyStopping(self.config.patience, self.config.verbose, self.config.delta)
-        train_loss_epoch = []
-        val_loss_epoch = []
-
-
-        for epoch in tqdm(range(self.config.num_epochs)):
+        num_epochs = self.config.num_epochs
+        path_to_log = os.path.join(path, 'training.txt')
+        for epoch in range(num_epochs):
             train_loss = []
             val_loss = []
+            acc_val_epoch = 0
+            acc_train_epoch= 0
+            
+            print_log(path_to_log, ">>>>>>>>>>Trainig<<<<<<<<<<\n")
             for batch_x, batch_y in train_loader:
-
-                loss, m_train = self._process_one_batch(batch_x, batch_y)
+                loss, acc_train, preds_train = self._process_one_batch(batch_x, batch_y)
                 train_loss.append(loss.item())
                 self.optim.zero_grad()
-
                 loss.backward()
-
                 self.optim.step()
+                acc_train_epoch += acc_train
 
+            acc_train_epoch = acc_train_epoch/ len(train_loader)
+            print_log(path_to_log, f'Epoch {epoch + 1}/{num_epochs}: train_metrics: {acc_train_epoch}, train_loss_epoch: {np.mean(train_loss):.4f}\n')
+            
+            print_log(path_to_log, ">>>>>>>>>>Validation<<<<<<<<<<\n")
             with torch.no_grad():
                 for batch_x, batch_y in val_loader:
-
-                    loss, m_val = self._process_one_batch(batch_x, batch_y)
+                    loss, acc_val, preds_val = self._process_one_batch(batch_x, batch_y)
                     val_loss.append(loss.item())
+                    acc_val_epoch += acc_val
 
-            early_stopping(-m_val['accuracy_score'], self.model, path)
+                acc_val_epoch = acc_val_epoch / len(val_loader)
+            
+            print_log(path_to_log, f'Epoch {epoch + 1}/{num_epochs}: val metrics: {acc_val_epoch}, val_loss_epoch: {np.mean(val_loss):.4f}\n')
+            early_stopping(-acc_val_epoch, self.model, path)
             if early_stopping.early_stop:
-                print("Early stopping")
+                print_log(path_to_log, f'Early stopping')
                 break
+        
 
 
+    def test(self, path):
+        test_set, test_loader = get_dataset_loader(self.config, 'TEST')
+        test_loss = []
+        path_to_log = os.path.join(path, 'testing.txt')
+        print_log(path_to_log, 'Loading model....\n')
+        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
+        print_log(path_to_log,'Loaded\n')
+        print_log(path_to_log, ">>>>>>>>>>Testing<<<<<<<<<<\n")
+        preds_list = []
+        true_list = []
+        with torch.no_grad():
+            self.model.train(False)
+            for batch_x, batch_y in test_loader:
+                loss, acc_test, preds_test = self._process_one_batch(batch_x, batch_y)
+                test_loss.append(loss.item())
+                preds_list.extend(preds_test.argmax(1).cpu().tolist())
+                true_list.extend(batch_y.cpu().tolist())
 
-    def test(self, config):
-        pass
+            m = metrics(true_list, preds_list)
+            test_loss = np.mean(test_loss)
+        to_print = {
+            'Loss_test': test_loss, **m
+        }
+        print_log(path_to_log, f'{print_dict(**to_print)}\n\n')
 
-    def visualize(self, config):
-        pass
 
-    def test_adverasial(self, config):
+    def visualize(self, true, advers = None, path='./pic', name = 'test.pdf', **kwargs):
+        plt.style.use('stylesheet.mplstyle')
 
-        pass
+        plt.figure(figsize = (10, 5))
+
+        plt.plot(true,  "--", linewidth = 1, label='Original data')
+        if advers is not None:
+            plt.plot(advers, label='Attacked data')
+
+        plt.title(print_dict(**kwargs))
+        plt.xlabel('Epsilon')
+        plt.ylabel('Accuracy')
+        plt.legend()
+        plt.grid(True)
+
+        if not os.path.exists(path):
+            os.mkdir(path)
+        plt.savefig(os.path.join(path, name))
+
+
+    def test_adverasial(self, path, epsilon, max_iter, attack):
+        test_set, test_loader = get_dataset_loader(self.config, 'TEST')
+        path_to_log = os.path.join(path, 'testing_adversarial.txt')
+        print_log(path_to_log, 'Loading model....\n')
+        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
+        print_log(path_to_log,'Loaded')
+        print_log(path_to_log, "\n>>>>>>>>>>Testing_adversarial<<<<<<<<<<\n")
+        preds = []
+        trues = []
+        per_data_list = []
+        adv_examples = []
+        initial_examples = []
+        attack_func = get_attack(attack)
+
+        # self.model.eval()
+        for batch_x, batch_y in test_loader:
+            batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+            per_data = attack_func(self.model, 
+                                   input=batch_x, 
+                                   target= batch_y,  
+                                   epsilon=epsilon, 
+                                   criterion=self.criterion, 
+                                   max_iter=max_iter)
+
+            outputs = self.model(per_data)
+
+            preds.append(outputs.detach())
+            trues.append(batch_y)
+            per_data_list.append(per_data.detach().cpu())
+            initial_examples.append(batch_x.detach().cpu())
+
+        preds = torch.cat(preds, 0).argmax(1)
+        print(preds.shape)
+        trues = torch.cat(trues, 0)
+        per_data_list = torch.cat(per_data_list, 0)
+        initial_examples = torch.cat(initial_examples, 0)
+        m = metrics(trues.cpu().numpy(), preds.cpu().numpy())
+        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)}\n')
+        path_to_data = os.path.join(path, 'data')
+        if not os.path.exists(path_to_data):
+            os.mkdir(path_to_data)
+
+        torch.save(per_data_list, os.path.join(path_to_data, f'per_data_list_eps{epsilon}_mi{max_iter}'))
+        torch.save(initial_examples, os.path.join(path_to_data, f'initial_data_list_eps{epsilon}_mi{max_iter}'))
+        print_log(path_to_log, f'Adversarial data and initial data are saved to {path_to_data}\n')
+    
+        

@@ -52,5 +52,5 @@ attacks = {
 
 def get_attack(attack = 'ifgsm'):
 
-    return attack[attack]
+    return attacks[attack]
     
