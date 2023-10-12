@@ -1,0 +1,27 @@
+{
+    "model": {
+      "model_name": "LSTM_FCN",
+      "h_sizes": [64, 64],
+      "num_classes": 2,
+      "dilation": 1,
+      "kernel_size": 3,
+      "features": [128, 128, 128],
+      "in_ch": 1,
+      "bidirectional": true,
+      "dropout": 0.1,
+      "d_model": 128,
+      "n_heads": 8,
+      "n_layers": 1,
+      "mul": 4
+    },
+    "root_path": "/workspace/project/mi5-eps0.5.csv",
+    "dataset_name": "FordADiscr",
+    "batch_size": 32,
+    "num_workers": 10,
+    "device": "cuda:6",
+    "lr": 1e-3,
+    "patience":10,
+    "verbose":true,
+    "delta":0,
+    "num_epochs":30
+  }

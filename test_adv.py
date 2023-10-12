@@ -9,7 +9,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--path_to_log', type=str, required=True)
-    parser.add_argument('--eps', type=int, default=0.5)
+    parser.add_argument('--eps', type=float, default=0.5)
     parser.add_argument('--max_iter', type=int, default=10)
     parser.add_argument('--attack', type=str, default='ifgsm')
     args = parser.parse_args()
