@@ -1,4 +1,7 @@
 import os
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]="7"
+import os
 import argparse
 from src.tools import Config
 from src.trainer import Trainer
@@ -15,19 +18,38 @@ if __name__ == '__main__':
     parser.add_argument('--path_to_discr_log', type=str, required=True)
     parser.add_argument('--eps', type=float, default=0.5)
     parser.add_argument('--max_iter', type=int, default=10)
-    parser.add_argument('--attack', type=str, default='ifgsm')
-    args = parser.parse_args()
-    path_to_log = os.path.join(args.path_to_log, 'config.json')
-    path_to_discr_log = os.path.join(args.path_to_discr_log, 'config.json')
-    with open(path_to_log, 'r') as config_file:
-        config_log_dict = json.load(config_file)
+    parser.add_argument('--attack', type=str, default='ifgsm_discr')
+    parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--discr_path', type=str, default=None)
+    parser.add_argument('--lamb', type=int, default=0.3)
 
+    args = parser.parse_args()
+    print(args.device)
+
+    path_to_discr_log = os.path.join(args.path_to_discr_log, 'config.json')
     with open(path_to_discr_log, 'r') as config_file:
         config_dicr_dict = json.load(config_file)
 
-    config_log = Config(**config_log_dict)
     config_discr = Config(**config_dicr_dict)
-    dicr = build_discr(config_discr, args.path_to_discr_log)
-    trainer = Trainer(config_log)
+    discr_critic = build_discr(config_discr, args.path_to_discr_log, device=args.device)
 
-    trainer.test_discr(args.path_to_log, dicr, epsilon=args.eps, max_iter=args.max_iter, attack=args.attack)
+
+    path_to_log = os.path.join(args.path_to_log, 'config.json')
+    discr = []
+    with open(args.discr_path, 'r') as f:
+        for i in f:
+            config_path = os.path.join(i.strip(), 'config.json')
+            with open(config_path, 'r') as config_file:
+                config_dict = json.load(config_file)
+
+            config = Config(**config_dict)
+            discr.append(build_discr(config, i.strip(), device=args.device))
+
+
+
+    with open(path_to_log, 'r') as config_file:
+        config_log_dict = json.load(config_file)
+
+    config_log = Config(**config_log_dict)
+    trainer = Trainer(config_log, device=args.device)
+    trainer.test_discr(args.path_to_log, discr_critic, epsilon=args.eps, max_iter=args.max_iter, attack=args.attack, discrim_adv=discr, lamb=args.lamb)

@@ -12,8 +12,10 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, required=True)
     parser.add_argument('--path_to_save_checkpoint', type=str, default='./logs')
     parser.add_argument('--add_info', type=str, default=None)
+    parser.add_argument('--device', type=str, default='cuda:5')
+    
     args = parser.parse_args()
-
+    print(args.device)
     with open(args.config, 'r') as config_file:
         config_dict = json.load(config_file)
         
@@ -38,7 +40,7 @@ if __name__ == '__main__':
         json.dump(config_dict, json_file)
 
     
-    trainer = Trainer(config)
+    trainer = Trainer(config, device=args.device)
 
     trainer.train(path_to_save)
 

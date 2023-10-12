@@ -12,9 +12,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class Trainer:
-    def __init__(self, config):
+    def __init__(self, config, device):
         self.config = config
-        self.device = config.device
+        # self.device = config.device
+        self.device = device
         self.model = self._build_model(config.model).to(self.device)
         self.criterion = torch.nn.CrossEntropyLoss()
         self.optim = torch.optim.Adamax(self.model.parameters(), lr=config.lr)
@@ -82,7 +83,7 @@ class Trainer:
         test_loss = []
         path_to_log = os.path.join(path, 'testing.txt')
         print_log(path_to_log, 'Loading model....\n')
-        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
+        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth'), map_location=self.device))
         print_log(path_to_log,'Loaded\n')
         print_log(path_to_log, ">>>>>>>>>>Testing<<<<<<<<<<\n")
         preds_list = []
@@ -102,30 +103,15 @@ class Trainer:
         }
         print_log(path_to_log, f'{print_dict(**to_print)}\n\n')
 
-    def visualize(self, true, advers = None, path='./pic', name = 'test.pdf', **kwargs):
-        plt.style.use('stylesheet.mplstyle')
-        plt.figure(figsize = (10, 5))
-        plt.plot(true,  "--", linewidth = 1, label='Original data')
-        if advers is not None:
-            plt.plot(advers, label='Attacked data')
 
-        plt.title(print_dict(**kwargs))
-        plt.xlabel('Epsilon')
-        plt.ylabel('Accuracy')
-        plt.legend()
-        plt.grid(True)
-        if not os.path.exists(path):
-            os.mkdir(path)
-
-        plt.savefig(os.path.join(path, name))
-
-    def test_adverasial(self, path, epsilon, max_iter, attack):
+    def test_adverasial(self, path, epsilon, max_iter, attack, discr = None, lamb = None):
         test_set, test_loader = get_dataset_loader(self.config, 'TEST')
         path_to_log = os.path.join(path, 'testing_adversarial.txt')
         print_log(path_to_log, 'Loading model....\n')
-        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
+        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth'), map_location=self.device))
         print_log(path_to_log,'Loaded')
         print_log(path_to_log, "\n>>>>>>>>>>Testing_adversarial<<<<<<<<<<\n")
+        print_log(path_to_log, f"{attack} attack\n")
         preds = []
         trues = []
         per_data_list = []
@@ -134,12 +120,20 @@ class Trainer:
         # self.model.eval()
         for batch_x, batch_y in test_loader:
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
-            per_data = attack_func(self.model, 
-                                   input=batch_x, 
-                                   target= batch_y,  
-                                   epsilon=epsilon, 
-                                   criterion=self.criterion, 
-                                   max_iter=max_iter)
+            if attack == 'ifgsm_discr':
+                per_data = attack_func(self.model, discr,
+                                input=batch_x, 
+                                target= batch_y,  
+                                epsilon=epsilon, 
+                                criterion=self.criterion, 
+                                max_iter=max_iter, lamb = 0.1)
+            else:
+                per_data = attack_func(self.model, 
+                                    input=batch_x, 
+                                    target= batch_y,  
+                                    epsilon=epsilon, 
+                                    criterion=self.criterion, 
+                                    max_iter=max_iter)
 
             outputs = self.model(per_data)
             preds.append(outputs.detach())
@@ -152,12 +146,12 @@ class Trainer:
         per_data_list = torch.cat(per_data_list, 0)
         initial_examples = torch.cat(initial_examples, 0)
         m = metrics(trues.cpu().numpy(), preds.cpu().numpy())
-        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)}\n')
+        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} lambda {lamb}\n')
         path_to_data = os.path.join(path, 'data')
         if not os.path.exists(path_to_data):
             os.mkdir(path_to_data)
 
-        path_to_data = os.path.join(path_to_data, f'{attack}_eps{epsilon}_mi{max_iter}')
+        path_to_data = os.path.join(path_to_data, f'{attack}_eps{epsilon}_mi{max_iter}_lam{lamb}')
         if not os.path.exists(path_to_data):
             os.mkdir(path_to_data)
         torch.save(per_data_list, os.path.join(path_to_data, f'per_data_list.pth'))
@@ -166,12 +160,12 @@ class Trainer:
         # torch.save(initial_examples, os.path.join(path_to_data, f'initial_data_list_eps{epsilon}_mi{max_iter}.pth'))
         print_log(path_to_log, f'Adversarial data and initial data are saved to {path_to_data}\n')
 
-    def test_discr(self, path, discrim, attack, epsilon, max_iter):
+    def test_discr(self, path, discrim_critic, attack, epsilon, max_iter, discrim_adv = None, lamb = None):
 
         test_set, test_loader = get_dataset_loader(self.config, 'TEST')
         path_to_log = os.path.join(path, 'testing_adversarial_discriminator.txt')
         print_log(path_to_log, 'Loading model....\n')
-        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
+        self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth'), map_location=self.device))
         print_log(path_to_log,'Loaded')
         print_log(path_to_log, "\n>>>>>>>>>>Testing_adversarial_with_dicriminator<<<<<<<<<<\n")
         preds = []
@@ -185,15 +179,25 @@ class Trainer:
         for batch_x, batch_y in test_loader:
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             batch_y_discr = torch.ones_like(batch_y).to(self.device)
-            per_data = attack_func(self.model, 
-                                   input=batch_x, 
-                                   target= batch_y,  
-                                   epsilon=epsilon, 
-                                   criterion=self.criterion, 
-                                   max_iter=max_iter)
+            
+            if attack == 'ifgsm_discr':
+                per_data = attack_func(self.model, discrim_adv,
+                                input=batch_x, 
+                                target= batch_y,  
+                                epsilon=epsilon, 
+                                criterion=self.criterion, 
+                                max_iter=max_iter, lamb = lamb)
+            else:
+                per_data = attack_func(self.model, 
+                                    input=batch_x, 
+                                    target= batch_y,  
+                                    epsilon=epsilon, 
+                                    criterion=self.criterion, 
+                                    max_iter=max_iter)
+                
         
             outputs = self.model(per_data)
-            outputs_discr = discrim(per_data)
+            outputs_discr = discrim_critic(per_data)
             preds_discr.append(outputs_discr.detach())
             trues_discr.append(batch_y_discr.detach())
             preds.append(outputs.detach())
@@ -211,6 +215,26 @@ class Trainer:
         acc_discr = calc_accuracy(trues_discr.cpu().numpy(), preds_discr.cpu().numpy())
         effect = 1 - m['accuracy_score']
         concealability = 1 - acc_discr
-        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} effectiveness={effect:.4f} concealability={concealability:.4f}\n')
+        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} effectiveness={effect:.4f} concealability={concealability:.4f} lambda {lamb}\n')
+
+
+
+
+    def visualize(self, true, advers = None, path='./pic', name = 'test.pdf', **kwargs):
+            plt.style.use('stylesheet.mplstyle')
+            plt.figure(figsize = (10, 5))
+            plt.plot(true,  "--", linewidth = 1, label='Original data')
+            if advers is not None:
+                plt.plot(advers, label='Attacked data')
+
+            plt.title(print_dict(**kwargs))
+            plt.xlabel('Epsilon')
+            plt.ylabel('Accuracy')
+            plt.legend()
+            plt.grid(True)
+            if not os.path.exists(path):
+                os.mkdir(path)
+
+            plt.savefig(os.path.join(path, name))
         
         

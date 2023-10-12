@@ -1,15 +1,15 @@
 {
     "model": {
       "model_name": "LSTM_FCN",
-      "h_sizes": [64, 64],
+      "h_sizes": [16, 16],
       "num_classes": 2,
       "dilation": 1,
       "kernel_size": 3,
-      "features": [128, 128, 128],
+      "features": [16, 16, 16, 16],
       "in_ch": 1,
       "bidirectional": true,
-      "dropout": 0.1,
-      "d_model": 128,
+      "dropout": 0.2,
+      "d_model": 1024,
       "n_heads": 8,
       "n_layers": 1,
       "mul": 4

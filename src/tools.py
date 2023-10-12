@@ -65,10 +65,10 @@ def log_data(path, data):
     with open(path, 'a+') as f:
         f.write(data)
 
-def build_discr(config, path):
+def build_discr(config, path, device):
     model = get_model(config.model.model_name)(config.model)
-    model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
-    return model.to(config.device)
+    model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth'), map_location=device))
+    return model.to(device)
 
 class Config:
     def __init__(self, **kwargs):
