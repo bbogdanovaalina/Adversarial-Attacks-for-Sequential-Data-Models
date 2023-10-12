@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .modules import CNNLayer, LSTMLayer, Encoder
-
+from .timesnet.TimesNet import Model as TimesNet
 
 class LSTM(nn.Module):
     
@@ -72,7 +72,8 @@ models = {
     'CNN': CNN,
     'TranClass': TranClass,
     'LSTM_FCN': LSTM_FCN,
-    'LSTM': LSTM
+    'LSTM': LSTM,
+    'TimesNet' : TimesNet
 }
 def get_model(model_name):
 

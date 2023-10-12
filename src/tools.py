@@ -4,17 +4,19 @@ import numpy as np
 import math
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 import matplotlib.pyplot as plt
+from .models import get_model
+
 
 def print_dict(**kwargs):
     result = ""
     for key, value in kwargs.items():
-        result += f"{key}={value} "
+        result += f"{key}={value:.4f} "
     return result.strip()
 
 def print_log(path, data):
     print(data)
     log_data(path, data)
-    
+
 def metrics(true, pred):
     true = np.array(true)
     pred = np.array(pred)
@@ -33,10 +35,13 @@ def calc_accuracy(true, pred):
     return accuracy_score(true, pred)
 
 
-def set_lr(optim, lr):
+def set_lr(optim, lr, path = None):
     for p in optim.param_groups:
         p['lr'] = lr
-    print(f'Lr is adjusted to {lr}')
+    if path is not None:
+        print_log(path, f'Lr is adjusted to {lr}\n')
+    else:
+        print(f'Lr is adjusted to {lr}\n')
 
 def cosine_annealing_lr(epoch, num_epochs, initial_lr):
     return initial_lr * 0.5 * (1 + math.cos(math.pi * epoch / num_epochs))
@@ -59,6 +64,11 @@ def visual_data(true, advers = None, figsize = (12, 7), path='./pic', name = 'te
 def log_data(path, data):
     with open(path, 'a+') as f:
         f.write(data)
+
+def build_discr(config, path):
+    model = get_model(config.model.model_name)(config.model)
+    model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth')))
+    return model.to(config.device)
 
 class Config:
     def __init__(self, **kwargs):
