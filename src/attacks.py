@@ -106,6 +106,7 @@ def ifgsm_with_discr(model, discr, input, target, epsilon, criterion, lamb,  max
 attacks = {
     'fgsm': fgsm_attack,
     'ifgsm': ifgsm_attack,
+    'deepfool': deepfool_attack,
     'ifgsm_discr': ifgsm_with_discr
 }
 
