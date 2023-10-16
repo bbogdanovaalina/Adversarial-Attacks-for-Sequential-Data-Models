@@ -1,5 +1,5 @@
 import torch
-from .tools import EarlyStopping, visual_data,  set_lr, cosine_annealing_lr, metrics, print_dict, calc_accuracy, print_log
+from .tools import EarlyStopping, set_lr, cosine_annealing_lr, metrics, print_dict, calc_accuracy, print_log, set_model_to_eval_mode
 from .attacks import get_attack
 from .datasets import get_dataset_loader
 from .models import get_model
@@ -14,7 +14,6 @@ warnings.filterwarnings('ignore')
 class Trainer:
     def __init__(self, config, device):
         self.config = config
-        # self.device = config.device
         self.device = device
         self.model = self._build_model(config.model).to(self.device)
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -35,11 +34,14 @@ class Trainer:
     def train(self, path):
         self.model.train()
         train_set, train_loader = get_dataset_loader(self.config, 'TRAIN')
+        
         val_set, val_loader = get_dataset_loader(self.config, 'TEST')
+        
         early_stopping = EarlyStopping(self.config.patience, self.config.verbose, self.config.delta)
+        
         num_epochs = self.config.num_epochs
         path_to_log = os.path.join(path, 'training.txt')
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs)):
             train_loss = []
             val_loss = []
             acc_val_epoch = 0
@@ -104,8 +106,13 @@ class Trainer:
         print_log(path_to_log, f'{print_dict(**to_print)}\n\n')
 
 
-    def test_adverasial(self, path, epsilon, max_iter, attack, discr = None, lamb = None):
-        test_set, test_loader = get_dataset_loader(self.config, 'TEST')
+    def test_adverasial(self, path, epsilon, max_iter, attack, discr = None, lamb = None, is_train = 1):
+        if is_train == 1:
+            dataset, loader = get_dataset_loader(self.config, 'TRAIN')
+            add_info = 'TRAIN'
+        else:
+            dataset, loader = get_dataset_loader(self.config, 'TEST')
+            add_info = 'TEST'
         path_to_log = os.path.join(path, 'testing_adversarial.txt')
         print_log(path_to_log, 'Loading model....\n')
         self.model.load_state_dict(torch.load(os.path.join(path, 'checkpoint.pth'), map_location=self.device))
@@ -118,7 +125,8 @@ class Trainer:
         initial_examples = []
         attack_func = get_attack(attack)
         # self.model.eval()
-        for batch_x, batch_y in test_loader:
+        # set_model_to_eval_mode(self.model)
+        for batch_x, batch_y in loader:
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             if attack == 'ifgsm_discr':
                 per_data = attack_func(self.model, discr,
@@ -126,7 +134,7 @@ class Trainer:
                                 target= batch_y,  
                                 epsilon=epsilon, 
                                 criterion=self.criterion, 
-                                max_iter=max_iter, lamb = 0.1)
+                                max_iter=max_iter, lamb = lamb)
             else:
                 per_data = attack_func(self.model, 
                                     input=batch_x, 
@@ -146,22 +154,24 @@ class Trainer:
         per_data_list = torch.cat(per_data_list, 0)
         initial_examples = torch.cat(initial_examples, 0)
         m = metrics(trues.cpu().numpy(), preds.cpu().numpy())
-        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} lambda {lamb}\n')
+        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} lambda {lamb} is_train: {is_train}\n')
         path_to_data = os.path.join(path, 'data')
         if not os.path.exists(path_to_data):
             os.mkdir(path_to_data)
+        if attack == 'ifgsm_discr':
+            path_to_data = os.path.join(path_to_data, f'is_train_{is_train}_{attack}_eps{epsilon}_mi{max_iter}_lam{lamb}')
 
-        path_to_data = os.path.join(path_to_data, f'{attack}_eps{epsilon}_mi{max_iter}_lam{lamb}')
+        else: 
+            path_to_data = os.path.join(path_to_data, f'is_train_{is_train}_{attack}_eps{epsilon}_mi{max_iter}')
+
         if not os.path.exists(path_to_data):
             os.mkdir(path_to_data)
         torch.save(per_data_list, os.path.join(path_to_data, f'per_data_list.pth'))
         torch.save(initial_examples, os.path.join(path_to_data, f'initial_data_list.pth'))
-        # torch.save(per_data_list, os.path.join(path_to_data, f'per_data_list_eps{epsilon}_mi{max_iter}.pth'))
-        # torch.save(initial_examples, os.path.join(path_to_data, f'initial_data_list_eps{epsilon}_mi{max_iter}.pth'))
         print_log(path_to_log, f'Adversarial data and initial data are saved to {path_to_data}\n')
 
     def test_discr(self, path, discrim_critic, attack, epsilon, max_iter, discrim_adv = None, lamb = None):
-
+        path_to_data = ''
         test_set, test_loader = get_dataset_loader(self.config, 'TEST')
         path_to_log = os.path.join(path, 'testing_adversarial_discriminator.txt')
         print_log(path_to_log, 'Loading model....\n')
@@ -175,8 +185,9 @@ class Trainer:
         per_data_list = []
         initial_examples = []
         attack_func = get_attack(attack)
-
-        for batch_x, batch_y in test_loader:
+        # set_model_to_eval_mode(self.model)
+        discrim_critic.eval()
+        for batch_x, batch_y in tqdm(test_loader):
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             batch_y_discr = torch.ones_like(batch_y).to(self.device)
             
@@ -208,6 +219,7 @@ class Trainer:
         preds = torch.cat(preds, 0).argmax(1)
         trues = torch.cat(trues, 0)
         preds_discr = torch.cat(preds_discr, 0).argmax(1)
+        print(preds_discr)
         trues_discr = torch.cat(trues_discr, 0)
         per_data_list = torch.cat(per_data_list, 0)
         initial_examples = torch.cat(initial_examples, 0)
@@ -216,8 +228,18 @@ class Trainer:
         effect = 1 - m['accuracy_score']
         concealability = 1 - acc_discr
         print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} effectiveness={effect:.4f} concealability={concealability:.4f} lambda {lamb}\n')
-
-
+        path_to_data = os.path.join(path, 'data')
+        if not os.path.exists(path_to_data):
+            os.mkdir(path_to_data)
+        if attack == 'ifgsm_discr':
+            path_to_data = os.path.join(path_to_data, f'{attack}_eps{epsilon}_mi{max_iter}_lam{lamb}')
+        else:
+            path_to_data = os.path.join(path_to_data, f'{attack}_eps{epsilon}_mi{max_iter}')
+        if not os.path.exists(path_to_data):
+            os.mkdir(path_to_data)
+        torch.save(per_data_list, os.path.join(path_to_data, f'per_data_list.pth'))
+        torch.save(initial_examples, os.path.join(path_to_data, f'initial_data_list.pth'))
+        print_log(path_to_log, f'Adversarial data and initial data are saved to {path_to_data}\n')
 
 
     def visualize(self, true, advers = None, path='./pic', name = 'test.pdf', **kwargs):

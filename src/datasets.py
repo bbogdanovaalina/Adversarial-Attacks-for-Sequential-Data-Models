@@ -90,9 +90,10 @@ class WineDataset(Dataset):
 
 class FordADiscrDataset(Dataset):
     def __init__(self, config, flag):
-        df = pd.read_csv(config.root_path, sep = '\t')
-        X = df.iloc[:, :-1].to_numpy()
-        y = df.iloc[:, -1].to_numpy().astype(int) 
+        df = pd.read_csv(config.root_path)
+        
+        X = torch.from_numpy(df.iloc[:, :-1].to_numpy()).float()
+        y = torch.from_numpy(df.iloc[:, -1].to_numpy()).long()
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=0xC0FFEE)
         if flag == 'TRAIN':
@@ -100,14 +101,11 @@ class FordADiscrDataset(Dataset):
         elif flag == 'TEST':
             self.X_data, self.y_data = X_test, y_test
 
-        self.X_data = torch.from_numpy(self.X_data).float()
-        self.y_data = torch.from_numpy(self.y_data).long()
-        self.max_seq_len = self.X_data.shape[1]
-        self.feature_df = torch.randn(size=(1, 1))
-        self.class_names = [0, 1]
-
     def __getitem__(self, index):
+        # print(self.X_data[index])
+
         x = self.X_data[index].unsqueeze(-1)
+        
         y = self.y_data[index]
         return x, y
 

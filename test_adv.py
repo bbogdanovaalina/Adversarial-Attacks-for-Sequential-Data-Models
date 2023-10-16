@@ -12,10 +12,11 @@ if __name__ == '__main__':
     parser.add_argument('--path_to_log', type=str, required=True)
     parser.add_argument('--eps', type=float, default=0.5)
     parser.add_argument('--max_iter', type=int, default=2)
-    parser.add_argument('--lamb', type=int, default=0.001)
+    parser.add_argument('--lamb', type=float, default=None)
     parser.add_argument('--attack', type=str, default='ifgsm')
     parser.add_argument('--discr_path', type=str, default=None)
-    parser.add_argument('--device', type=str, default='cuda:4')
+    parser.add_argument('--device', type=str, default='mps')
+    parser.add_argument('--is_train', type=int, default=1)
     args = parser.parse_args()
     print(args.device)
     if args.discr_path is not None:
@@ -43,4 +44,9 @@ if __name__ == '__main__':
     
     trainer = Trainer(config, device=args.device)
 
-    trainer.test_adverasial(args.path_to_log, epsilon=args.eps, max_iter=args.max_iter, attack=args.attack, discr=discr, lamb=args.lamb)
+    trainer.test_adverasial(args.path_to_log, epsilon=args.eps, 
+                            max_iter=args.max_iter,
+                            attack=args.attack, 
+                            discr=discr, 
+                            lamb=args.lamb, 
+                            is_train=args.is_train)

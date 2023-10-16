@@ -116,6 +116,13 @@ class EarlyStopping:
         self.val_loss_min = val_loss
 
 
+def set_model_to_eval_mode(model):
+    for module in model.modules():
+        if isinstance(module, torch.nn.LayerNorm) or isinstance(module, torch.nn.Dropout) or isinstance(module, torch.nn.BatchNorm1d):
+            # print(module)
+            module.eval()
+
+
 
 
 
