@@ -154,15 +154,15 @@ class Trainer:
         per_data_list = torch.cat(per_data_list, 0)
         initial_examples = torch.cat(initial_examples, 0)
         m = metrics(trues.cpu().numpy(), preds.cpu().numpy())
-        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} lambda {lamb} is_train: {is_train}\n')
+        print_log(path_to_log, f'Epsilon: {epsilon} max_iter: {max_iter} {print_dict(**m)} lambda {lamb}, {add_info}\n')
         path_to_data = os.path.join(path, 'data')
         if not os.path.exists(path_to_data):
             os.mkdir(path_to_data)
-        if attack == 'ifgsm_discr':
-            path_to_data = os.path.join(path_to_data, f'is_train_{is_train}_{attack}_eps{epsilon}_mi{max_iter}_lam{lamb}')
+        if attack == 'ifgsm_discr' or attack == 'deepfool_discr':
+            path_to_data = os.path.join(path_to_data, f'{add_info}_{attack}_eps{epsilon}_mi{max_iter}_lam{lamb}')
 
         else: 
-            path_to_data = os.path.join(path_to_data, f'is_train_{is_train}_{attack}_eps{epsilon}_mi{max_iter}')
+            path_to_data = os.path.join(path_to_data, f'{add_info}_{attack}_eps{epsilon}_mi{max_iter}')
 
         if not os.path.exists(path_to_data):
             os.mkdir(path_to_data)
@@ -191,7 +191,7 @@ class Trainer:
             batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
             batch_y_discr = torch.ones_like(batch_y).to(self.device)
             
-            if attack == 'ifgsm_discr':
+            if attack == 'ifgsm_discr' or attack == 'deepfool_discr':
                 per_data = attack_func(self.model, discrim_adv,
                                 input=batch_x, 
                                 target= batch_y,  
